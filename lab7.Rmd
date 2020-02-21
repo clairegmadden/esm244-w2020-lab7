@@ -1,0 +1,190 @@
+---
+title: "lab7"
+author: "Claire Madden"
+date: "2/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+
+### Attach packages
+```{r}
+#General Packages for stuff
+library(tidyverse)
+library(janitor)
+library(plotly)
+library(here)
+#Packages for spatial stuff & point pattern analysis
+library(tmap)
+library(sf)
+library(spatstat)
+library(maptools)
+library(sp)
+library(raster)
+#Packages for cluster analysis:
+library(NbClust)
+library(cluster)
+library(factoextra)
+library(dendextend)
+library(ggdendro)
+
+```
+
+### Get data
+
+Red tree voles in Humboldt County
+
+```{r}
+
+voles <- read_sf(dsn = here("data", "redtreevoledata"), 
+                 layer = "ds033") %>% 
+  dplyr::select(COUNTY) %>% # get rid of all columns except county
+  dplyr::filter(COUNTY == "HUM") %>% # select only rows with observations in humboldt county
+  st_transform(crs = 4326) # change the projection to WGS84
+
+# st_crs(voles) # use this to check to make sure that crs is set to what we want
+
+plot(voles)
+
+# point pattern analysis requires specified boundaries to perform analysis within so...
+
+# read in data for Humboldt county
+
+humboldt <- read_sf(dsn = here("data", "redtreevoledata"),
+                    layer = "california_county_shape_file", crs = 4326) %>% 
+  dplyr::filter(NAME == "Humboldt") %>% # get only humboldt county instead of all CA counties
+  dplyr::select(NAME) # get rid of everything but name and geometry
+
+# st_crs(humboldt) #same projection as red tree vole data 
+
+
+plot(humboldt)
+
+# get both datasets plotted in the same space using tmap
+tm_shape(humboldt)+
+  tm_fill()+
+  tm_shape(voles)+
+  tm_dots(size = 0.1)
+# advantage of tmap (over ggplot) is currently only option that has interactive mode
+# good place to get started with mapping in R is :: Geocomputation in R (Robin Lovelace) which is available for free online and you can download a package that allows you to work through all the examples!
+
+# or the same deal in ggplot
+ggplot()+
+  geom_sf(data = humboldt)+
+  geom_sf(data = voles)
+```
+
+
+Convert vole events and humboldt polygon to a point pattern + window: 
+
+```{r}
+# not all statistical spatial packages are equiped to work with sf objects
+
+voles_sp <- as(voles, "Spatial")
+voles_ppp <- as(voles_sp, "ppp")
+
+# we will come back to this later 
+```
+
+
+## Cluster analysis
+
+### k-means
+
+```{r}
+iris_nice <- iris %>% 
+  clean_names()
+
+# check out the data to see if there are obvious clusters
+ggplot(data = iris_nice)+
+  geom_point(aes(x = petal_length, 
+                 y = petal_width,
+                 color = species))
+
+# can ask R: how many clusters do YOU think there should be for this dataset?
+
+number_est <- NbClust(iris_nice[1:4], #only look at first four columns of iris_nice
+                      min.nc = 2, # minimum number of clusters to consider should be 2
+                      max.nc = 10, # max to consider should be 10
+                      method = "kmeans") # we want to use a k-means 
+
+# R is recommending 2 clusters but we know there are three species in the iris dataset so it makes more sense to use 3 clusters
+
+
+# no we do kmeans:
+
+iris_km <- kmeans(iris_nice[1:4], 3)
+
+# bind the cluster number together with the original data:
+
+iris_cl <- data.frame(iris_nice, cluster_no = factor(iris_km$cluster))
+
+# look at different clusters and how they appear
+
+ggplot(iris_cl)+
+  geom_point(aes(x = sepal_length,
+                 y = sepal_width,
+                 color = cluster_no))
+
+```
+
+
+```{r}
+plot_ly(x = iris_cl$petal_length,
+        y = iris_cl$petal_width,
+        z = iris_cl$sepal_width, 
+        type = "scatter3d",
+        color = iris_cl$cluster_no)
+
+
+```
+
+
+#### Heirarchical cluster analysis
+
+- 'stats::hclust()' - agglomerative heirarchical clustering
+- 'cluster::diana()' - divisive heirarchical clustering
+
+```{r}
+wb_env <- read_csv(here("data", "wb_env.csv"))
+
+wb_ghg_20 <- wb_env %>% 
+  arrange(-ghg) %>% # arrange in decending order of ghg
+  head(20) # also could use top_n from dplyr, use top_frac to specify a fraction of rows to keep
+
+#need to scale numeric variables only so they can be compared, now all on zscale
+wb_scaled <- as.data.frame(scale(wb_ghg_20[3:7])) 
+
+rownames(wb_scaled) <- wb_ghg_20$name #make country names row names in scaled dataframe so we know whats what!
+
+# finding distances (a dissimilarity matrix)
+
+diss <- dist(wb_scaled, method = "euclidean", upper = TRUE)
+
+# now use euclidean distances to do some complete agglomerative clustering
+
+hc_complete <- hclust(diss, method = "complete")
+
+# plot it:
+
+plot(hc_complete)
+
+
+
+ggdendrogram(hc_complete,
+             rotate = TRUE)+
+  theme_minimal()+
+  labs(x = "Country")
+
+```
+
+
+
+
+
+
