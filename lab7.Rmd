@@ -89,6 +89,82 @@ voles_sp <- as(voles, "Spatial")
 voles_ppp <- as(voles_sp, "ppp")
 
 # we will come back to this later 
+
+## from key ##
+
+humboldt_sp <- as(humboldt, "Spatial")
+humboldt_win <- as(humboldt_sp, "owin")
+
+voles_pb <- ppp(voles_ppp$x, voles_ppp$y, window = humboldt_win)
+
+
+plot(voles_pb)
+
+vole_qt <- quadrat.test(voles_pb, nx = 5, ny = 10) # nx and ny are number of columns/rows for the rectangles created 
+
+# Returns: VoleQT
+# Chi-squared test of CSR using quadrat counts
+
+# data:  VolePPP 
+# X-squared = 425.94, df = 45, p-value < 2.2e-16
+# alternative hypothesis: two.sided 
+# Reject the null hypothesis of spatial evenness! But we still don't know if more clustered or more uniform...
+
+plot(voles_pb)
+plot(vole_qt, add = TRUE, cex = 0.4)
+
+```
+Plot densities: 
+```{r}
+
+point_density <- density(voles_pb, sigma = 0.02)
+plot(point_density)
+
+# Can you start viewing this in tmap? Yes, rasterize it: 
+wgs84 = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+vole_raster <- raster(point_density, crs = wgs84)
+
+# Then plot: 
+tm_shape(vole_raster) +
+  tm_raster(midpoint = NA, 
+            palette = "Blues", 
+            legend.show = FALSE)
+
+```
+Nearest neighbor (G-function)
+```{r}
+r <- seq(0,0.15, by = 0.005)
+
+gfunction <- envelope(voles_pb, fun = Gest, r = r, nsim = 100, nrank = 2) # Sig level of Monte Carlo = 0.04
+
+plot(gfunction$obs ~ gfunction$r, type = "l", col = "black", lty = 11)
+lines(gfunction$hi ~ gfunction$r, type = "l", col = "blue", lty = 8)
+lines(gfunction$theo ~ gfunction$r, type = "l", col = "red", lty = 6)
+lines(gfunction$lo ~ gfunction$r, type = "l", col = "green", lty = 4)
+
+# Confirms, in combination with quadrat.test, clustered data!
+
+```
+Nearest Neighbor by Ripley's K (using L standardization)
+
+```{r}
+r2 <- seq(0,0.5, by = 0.05)
+
+lfunction <- envelope(voles_pb, fun = Lest, r = r2, nsim = 20, rank = 2, global = TRUE)
+
+plot(lfunction$obs ~ lfunction$r, type = "l", col = "black", lty = 11)
+lines(lfunction$hi ~ lfunction$r, type = "l", col = "blue", lty = 8)
+lines(lfunction$theo ~ lfunction$r, type = "l", col = "red", lty = 6)
+lines(lfunction$lo ~ lfunction$r, type = "l", col = "green", lty = 4)
+
+```
+
+Diggle-Cressie-Loosmore-Ford test of CSR
+```{r}
+
+DCLFTest <- dclf.test(voles_pb, nsim = 100, rank = 2) 
+DCLFTest
+
 ```
 
 
